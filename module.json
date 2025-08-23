@@ -1,0 +1,20 @@
+{
+    "version": "1.0.0",
+    "name": "Multiregions",
+    "author": "OkayCMS",
+    "vendor": "OkayCMS",
+    "description": "Модуль мультирегионов для работы с поддоменами и SEO оптимизацией под разные города",
+    "type": "feature",
+    "backend_main_controller": "MultiregionsAdmin",
+    "init_class": "Okay\\Modules\\OkayCMS\\Multiregions\\Init\\Init",
+    "permissions": [
+        {
+            "name": "multiregions",
+            "label": "Мультирегионы"
+        }
+    ],
+    "requirements": {
+        "okay_cms": ">=4.5.0",
+        "php": ">=7.4"
+    }
+}
