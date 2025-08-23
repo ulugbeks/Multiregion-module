@@ -15,7 +15,9 @@ class Init extends AbstractInit
     {
         $this->setBackendMainController('MultiregionsAdmin');
 
-        // Создаем таблицу поддоменов
+        // Create subdomains table with proper prefix
+        $prefix = $this->config->db_prefix ?? 'ok_';
+        
         $this->migrateEntityTable(SubdomainsEntity::class, [
             (new EntityField('id'))->setIndexPrimaryKey()->setTypeInt(11, false)->setAutoIncrement(),
             (new EntityField('subdomain'))->setTypeVarchar(50)->setIndexUnique(),
@@ -32,7 +34,7 @@ class Init extends AbstractInit
             (new EntityField('updated_at'))->setTypeDatetime()->setNullable(),
         ]);
 
-        // Создаем таблицу SEO шаблонов
+        // Create SEO templates table
         $this->migrateEntityTable(SubdomainSeoEntity::class, [
             (new EntityField('id'))->setIndexPrimaryKey()->setTypeInt(11, false)->setAutoIncrement(),
             (new EntityField('subdomain_id'))->setTypeInt(11),
@@ -47,19 +49,46 @@ class Init extends AbstractInit
 
     public function init()
     {
-        // Добавляем разрешение
+        // Add permission
         $this->addPermission(self::PERMISSION);
         
-        // Регистрируем контроллеры
+        // Register backend controllers
         $this->registerBackendController('MultiregionsAdmin');
         $this->addBackendControllerPermission('MultiregionsAdmin', self::PERMISSION);
         
         $this->registerBackendController('MultiregionAdmin');
         $this->addBackendControllerPermission('MultiregionAdmin', self::PERMISSION);
         
-        // Добавляем пункт в меню
+        // Add to backend menu
         $this->extendBackendMenu('left_settings', [
             'left_multiregions_title' => ['MultiregionsAdmin', 'MultiregionAdmin'],
         ]);
+        
+        // Register frontend extenders
+        $this->registerFrontExtender();
+    }
+    
+    /**
+     * Register frontend extenders for all page types
+     */
+    private function registerFrontExtender()
+    {
+        // Hook into MainController
+        $this->extendController('Okay\Controllers\MainController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendMain');
+        
+        // Hook into CategoryController
+        $this->extendController('Okay\Controllers\CategoryController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendCategory');
+        
+        // Hook into ProductController
+        $this->extendController('Okay\Controllers\ProductController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendProduct');
+        
+        // Hook into BrandsController
+        $this->extendController('Okay\Controllers\BrandsController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendBrands');
+        
+        // Hook into BlogController
+        $this->extendController('Okay\Controllers\BlogController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendBlog');
+        
+        // Hook into PageController
+        $this->extendController('Okay\Controllers\PageController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendPage');
     }
 }

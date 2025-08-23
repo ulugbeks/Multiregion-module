@@ -8,11 +8,13 @@ use Okay\Core\QueryFactory;
 use Okay\Core\Config;
 use Okay\Core\Settings;
 use Okay\Core\Design;
+use Okay\Core\TemplateConfig;
 use Okay\Modules\OkayCMS\Multiregions\Backend\Requests\BackendMultiregionsRequest;
 use Okay\Modules\OkayCMS\Multiregions\Backend\Helpers\BackendMultiregionsHelper;
 use Okay\Modules\OkayCMS\Multiregions\Helpers\SubdomainDetector;
 use Okay\Modules\OkayCMS\Multiregions\Helpers\SeoProcessor;
 use Okay\Modules\OkayCMS\Multiregions\Helpers\CityDeclension;
+use Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender;
 
 return [
     BackendMultiregionsRequest::class => [
@@ -32,27 +34,27 @@ return [
     
     SubdomainDetector::class => [
         'class' => SubdomainDetector::class,
-        'arguments' => [
-            new SR(Database::class),
-            new SR(QueryFactory::class),
-            new SR(Config::class),
-        ]
+        'arguments' => []
     ],
     
     SeoProcessor::class => [
         'class' => SeoProcessor::class,
-        'arguments' => [
-            new SR(SubdomainDetector::class),
-            new SR(CityDeclension::class),
-            new SR(Settings::class),
-            new SR(Database::class),
-            new SR(QueryFactory::class),
-            new SR(Config::class),
-        ]
+        'arguments' => []
     ],
     
     CityDeclension::class => [
         'class' => CityDeclension::class,
         'arguments' => []
+    ],
+    
+    FrontExtender::class => [
+        'class' => FrontExtender::class,
+        'arguments' => [
+            new SR(Design::class),
+            new SR(Request::class),
+            new SR(TemplateConfig::class),
+            new SR(SubdomainDetector::class),
+            new SR(SeoProcessor::class),
+        ]
     ],
 ];
