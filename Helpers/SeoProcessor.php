@@ -2,33 +2,45 @@
 
 namespace Okay\Modules\OkayCMS\Multiregions\Helpers;
 
-use Okay\Core\Database;
-use Okay\Core\QueryFactory;
-use Okay\Core\Config;
+use Okay\Core\ServiceLocator;
+use Okay\Core\EntityFactory;
 use Okay\Core\Settings;
+use Okay\Modules\OkayCMS\Multiregions\Entities\SubdomainSeoEntity;
 
 class SeoProcessor
 {
-    private $db;
-    private $queryFactory;
-    private $config;
-    private $settings;
     private $subdomainDetector;
     private $cityDeclension;
     private $variables = [];
+    private $entityFactory;
+    private $settings;
     
     public function __construct()
     {
-        $this->db = Database::getInstance();
-        $this->queryFactory = QueryFactory::getInstance();
-        $this->config = Config::getInstance();
-        $this->settings = Settings::getInstance();
         $this->subdomainDetector = new SubdomainDetector();
         $this->cityDeclension = new CityDeclension();
     }
     
+    private function getEntityFactory()
+    {
+        if (!$this->entityFactory) {
+            $serviceLocator = ServiceLocator::getInstance();
+            $this->entityFactory = $serviceLocator->getService(EntityFactory::class);
+        }
+        return $this->entityFactory;
+    }
+    
+    private function getSettings()
+    {
+        if (!$this->settings) {
+            $serviceLocator = ServiceLocator::getInstance();
+            $this->settings = $serviceLocator->getService(Settings::class);
+        }
+        return $this->settings;
+    }
+    
     /**
-     * Обработать SEO для текущей страницы
+     * Process SEO for current page
      */
     public function processSeo($pageType, $pageData = [])
     {
@@ -38,31 +50,18 @@ class SeoProcessor
             return null;
         }
         
-        // Получаем префикс таблиц
-        $prefix = $this->config->db_prefix ?? 'ok_';
-        
-        // Получаем SEO шаблоны для поддомена
-        $query = $this->queryFactory->newSqlQuery();
-        $query->setStatement(
-            "SELECT * FROM {$prefix}subdomain_seo 
-             WHERE subdomain_id = :subdomain_id 
-             AND page_type = :page_type 
-             LIMIT 1"
-        );
-        $query->bindValue('subdomain_id', $subdomain->id);
-        $query->bindValue('page_type', $pageType);
-        
-        $this->db->query($query);
-        $seoPattern = $this->db->result();
+        // Get SEO templates for subdomain
+        $subdomainSeoEntity = $this->getEntityFactory()->get(SubdomainSeoEntity::class);
+        $seoPattern = $subdomainSeoEntity->getPattern($subdomain->id, $pageType);
         
         if (!$seoPattern) {
             return null;
         }
         
-        // Подготавливаем переменные
+        // Prepare variables
         $this->prepareVariables($subdomain, $pageData);
         
-        // Обрабатываем шаблоны
+        // Process templates
         $result = new \stdClass();
         $result->meta_title = $this->processTemplate($seoPattern->meta_title_pattern);
         $result->meta_description = $this->processTemplate($seoPattern->meta_description_pattern);
@@ -74,7 +73,7 @@ class SeoProcessor
     }
     
     /**
-     * Обработать шаблон с заменой переменных
+     * Process template with variable replacement
      */
     public function processTemplate($template)
     {
@@ -82,28 +81,28 @@ class SeoProcessor
             return '';
         }
         
-        // Заменяем переменные
+        // Replace variables
         foreach ($this->variables as $key => $value) {
             $template = str_replace('{' . $key . '}', $value, $template);
         }
         
-        // Удаляем незамененные переменные
+        // Remove unreplaced variables
         $template = preg_replace('/\{[^}]+\}/', '', $template);
         
-        // Удаляем лишние пробелы
+        // Remove extra spaces
         $template = preg_replace('/\s+/', ' ', $template);
         
         return trim($template);
     }
     
     /**
-     * Подготовить переменные для замены
+     * Prepare variables for replacement
      */
     private function prepareVariables($subdomain, $pageData)
     {
         $this->variables = [];
         
-        // Склонения города
+        // City declensions
         $cases = [
             'city_nominative' => $subdomain->city_nominative,
             'city_genitive' => $subdomain->city_genitive,
@@ -113,7 +112,7 @@ class SeoProcessor
             'city_prepositional' => $subdomain->city_prepositional
         ];
         
-        // Если какие-то склонения не заполнены, используем автоматические
+        // If some declensions are not filled, use automatic ones
         foreach ($cases as $key => $value) {
             if (empty($value)) {
                 $caseName = str_replace('city_', '', $key);
@@ -121,7 +120,7 @@ class SeoProcessor
             }
         }
         
-        // Основные переменные города
+        // Main city variables
         $this->variables['city'] = $cases['city_nominative'];
         $this->variables['city_nominative'] = $cases['city_nominative'];
         $this->variables['city_genitive'] = $cases['city_genitive'];
@@ -130,12 +129,12 @@ class SeoProcessor
         $this->variables['city_instrumental'] = $cases['city_instrumental'];
         $this->variables['city_prepositional'] = $cases['city_prepositional'];
         
-        // Предлоги с городом
+        // Prepositions with city
         $this->variables['in_city'] = 'в ' . $cases['city_prepositional'];
         $this->variables['from_city'] = 'из ' . $cases['city_genitive'];
         $this->variables['to_city'] = 'в ' . $cases['city_accusative'];
         
-        // Данные страницы
+        // Page data
         if (isset($pageData['category'])) {
             $category = $pageData['category'];
             $this->variables['category'] = $category->name ?? '';
@@ -169,15 +168,16 @@ class SeoProcessor
             $this->variables['page_name'] = $page->name ?? '';
         }
         
-        // Общие переменные сайта
-        $this->variables['site_name'] = $this->settings->get('site_name');
-        $this->variables['company_name'] = $this->settings->get('company_name');
-        $this->variables['phone'] = $this->settings->get('phone');
-        $this->variables['email'] = $this->settings->get('email');
+        // General site variables
+        $settings = $this->getSettings();
+        $this->variables['site_name'] = $settings->get('site_name');
+        $this->variables['company_name'] = $settings->get('company_name');
+        $this->variables['phone'] = $settings->get('phone');
+        $this->variables['email'] = $settings->get('email');
     }
     
     /**
-     * Получить список всех доступных переменных
+     * Get list of all available variables
      */
     public static function getAvailableVariables()
     {

@@ -2,28 +2,32 @@
 
 namespace Okay\Modules\OkayCMS\Multiregions\Helpers;
 
-use Okay\Core\Database;
-use Okay\Core\QueryFactory;
-use Okay\Core\Config;
+use Okay\Core\ServiceLocator;
+use Okay\Core\EntityFactory;
+use Okay\Modules\OkayCMS\Multiregions\Entities\SubdomainsEntity;
 
 class SubdomainDetector
 {
-    private $db;
-    private $queryFactory;
-    private $config;
     private $currentSubdomain = null;
     private $detected = false;
+    private $entityFactory;
     
     public function __construct()
     {
-        // Получаем экземпляры через синглтоны
-        $this->db = Database::getInstance();
-        $this->queryFactory = QueryFactory::getInstance();
-        $this->config = Config::getInstance();
+        // We'll lazy-load the entity factory when needed
+    }
+    
+    private function getEntityFactory()
+    {
+        if (!$this->entityFactory) {
+            $serviceLocator = ServiceLocator::getInstance();
+            $this->entityFactory = $serviceLocator->getService(EntityFactory::class);
+        }
+        return $this->entityFactory;
     }
     
     /**
-     * Получить текущий поддомен
+     * Get current subdomain
      */
     public function getCurrentSubdomain()
     {
@@ -35,28 +39,28 @@ class SubdomainDetector
     }
     
     /**
-     * Определить поддомен из URL
+     * Detect subdomain from URL
      */
     public function detect()
     {
         $this->detected = true;
         
-        // Сначала проверяем GET параметр от .htaccess
+        // First check GET parameter from .htaccess
         $cityCode = $_GET['subdomain_city'] ?? null;
         
-        // Если нет в GET, проверяем поддомен напрямую
+        // If not in GET, check subdomain directly
         if (!$cityCode) {
             $host = $_SERVER['HTTP_HOST'] ?? '';
             
             if (!empty($host)) {
-                // Убираем www если есть
+                // Remove www if present
                 $host = preg_replace('/^www\./i', '', $host);
                 
-                // Проверяем паттерны для dev и основного домена
+                // Check patterns for dev and main domain
                 if (preg_match('/^([a-z0-9-]+)\.dev\.gidro-butik\.ru$/i', $host, $matches)) {
                     $cityCode = $matches[1];
                 } elseif (preg_match('/^([a-z0-9-]+)\.gidro-butik\.ru$/i', $host, $matches)) {
-                    // Исключаем технические поддомены
+                    // Exclude technical subdomains
                     if (!in_array($matches[1], ['www', 'mail', 'ftp', 'admin', 'api', 'dev'])) {
                         $cityCode = $matches[1];
                     }
@@ -64,48 +68,27 @@ class SubdomainDetector
             }
         }
         
-        // Альтернатива - проверяем /city/xxx/ в URL
-        if (!$cityCode) {
-            $uri = $_SERVER['REQUEST_URI'] ?? '';
-            if (preg_match('#^/city/([a-z0-9-]+)/?#i', $uri, $matches)) {
-                $cityCode = $matches[1];
-            }
-        }
-        
-        // Еще альтернатива - GET параметр city
-        if (!$cityCode) {
-            $cityCode = $_GET['city'] ?? null;
-        }
-        
         if (!$cityCode) {
             return null;
         }
         
-        // Получаем префикс таблиц
-        $prefix = $this->config->db_prefix ?? 'ok_';
-        
-        // Проверяем, существует ли такой поддомен в базе
+        // Check if subdomain exists in database
         try {
-            $query = $this->queryFactory->newSqlQuery();
-            $query->setStatement(
-                "SELECT * FROM {$prefix}subdomains 
-                 WHERE subdomain = :subdomain 
-                 AND enabled = 1 
-                 LIMIT 1"
-            );
-            $query->bindValue('subdomain', $cityCode);
+            $subdomainsEntity = $this->getEntityFactory()->get(SubdomainsEntity::class);
             
-            $this->db->query($query);
-            $subdomain = $this->db->result();
+            $subdomain = $subdomainsEntity->findOne([
+                'subdomain' => $cityCode,
+                'enabled' => 1
+            ]);
             
             if ($subdomain) {
                 $this->currentSubdomain = $subdomain;
                 
-                // Сохраняем в глобальную переменную для доступа из любого места
+                // Save to global variable for access from anywhere
                 $GLOBALS['current_subdomain'] = $subdomain;
             }
         } catch (\Exception $e) {
-            // Логируем ошибку, но не прерываем работу сайта
+            // Log error but don't break the site
             error_log('Multiregions: Error detecting subdomain: ' . $e->getMessage());
         }
         
@@ -113,7 +96,7 @@ class SubdomainDetector
     }
     
     /**
-     * Проверить, находимся ли мы на поддомене
+     * Check if we're on a subdomain
      */
     public function hasSubdomain()
     {
@@ -121,7 +104,7 @@ class SubdomainDetector
     }
     
     /**
-     * Получить базовый домен без поддомена
+     * Get base domain without subdomain
      */
     public function getBaseDomain()
     {
@@ -131,16 +114,16 @@ class SubdomainDetector
             return '';
         }
         
-        // Убираем www если есть
+        // Remove www if present
         $host = preg_replace('/^www\./i', '', $host);
         
-        // Убираем поддомен если есть
+        // Remove subdomain if present
         if (preg_match('/^[a-z0-9-]+\.(dev\.)?gidro-butik\.ru$/i', $host)) {
-            // Если это dev поддомен
+            // If it's a dev subdomain
             if (strpos($host, '.dev.gidro-butik.ru') !== false) {
                 return 'dev.gidro-butik.ru';
             }
-            // Если это обычный поддомен основного домена
+            // If it's a regular subdomain
             elseif (preg_match('/^[a-z0-9-]+\.gidro-butik\.ru$/i', $host)) {
                 return 'gidro-butik.ru';
             }
@@ -150,7 +133,7 @@ class SubdomainDetector
     }
     
     /**
-     * Сгенерировать URL для поддомена
+     * Generate URL for subdomain
      */
     public function generateSubdomainUrl($subdomain, $path = '/')
     {
@@ -161,46 +144,11 @@ class SubdomainDetector
             $subdomain = $subdomain->subdomain;
         }
         
-        // Обеспечиваем корректный путь
+        // Ensure correct path
         if (!empty($path) && $path[0] !== '/') {
             $path = '/' . $path;
         }
         
         return $protocol . '://' . $subdomain . '.' . $baseDomain . $path;
-    }
-    
-    /**
-     * Получить URL для основного домена (без поддомена)
-     */
-    public function getMainDomainUrl($path = '/')
-    {
-        $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-        $baseDomain = $this->getBaseDomain();
-        
-        if (!empty($path) && $path[0] !== '/') {
-            $path = '/' . $path;
-        }
-        
-        return $protocol . '://' . $baseDomain . $path;
-    }
-    
-    /**
-     * Установить текущий поддомен (для тестирования)
-     */
-    public function setCurrentSubdomain($subdomain)
-    {
-        $this->currentSubdomain = $subdomain;
-        $this->detected = true;
-        $GLOBALS['current_subdomain'] = $subdomain;
-    }
-    
-    /**
-     * Сбросить определение (для тестирования)
-     */
-    public function reset()
-    {
-        $this->currentSubdomain = null;
-        $this->detected = false;
-        unset($GLOBALS['current_subdomain']);
     }
 }

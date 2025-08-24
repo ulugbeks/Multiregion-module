@@ -3,9 +3,6 @@
 namespace Okay\Modules\OkayCMS\Multiregions\Init;
 
 use Okay\Core\Modules\AbstractInit;
-use Okay\Core\Modules\EntityField;
-use Okay\Modules\OkayCMS\Multiregions\Entities\SubdomainsEntity;
-use Okay\Modules\OkayCMS\Multiregions\Entities\SubdomainSeoEntity;
 
 class Init extends AbstractInit
 {
@@ -13,44 +10,49 @@ class Init extends AbstractInit
 
     public function install()
     {
-        $this->setBackendMainController('MultiregionsAdmin');
-
-        // Create subdomains table with proper prefix
-        $prefix = $this->config->db_prefix ?? 'ok_';
+        // Create tables using raw SQL with proper prefix handling
+        $this->db->query("CREATE TABLE IF NOT EXISTS `__subdomains` (
+            `id` INT(11) NOT NULL AUTO_INCREMENT,
+            `subdomain` VARCHAR(50) NOT NULL,
+            `city_name` VARCHAR(100) NOT NULL,
+            `city_nominative` VARCHAR(100) DEFAULT NULL,
+            `city_genitive` VARCHAR(100) DEFAULT NULL,
+            `city_dative` VARCHAR(100) DEFAULT NULL,
+            `city_accusative` VARCHAR(100) DEFAULT NULL,
+            `city_instrumental` VARCHAR(100) DEFAULT NULL,
+            `city_prepositional` VARCHAR(100) DEFAULT NULL,
+            `enabled` TINYINT(1) DEFAULT 1,
+            `position` INT(11) DEFAULT 0,
+            `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `subdomain` (`subdomain`),
+            KEY `enabled` (`enabled`),
+            KEY `position` (`position`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         
-        $this->migrateEntityTable(SubdomainsEntity::class, [
-            (new EntityField('id'))->setIndexPrimaryKey()->setTypeInt(11, false)->setAutoIncrement(),
-            (new EntityField('subdomain'))->setTypeVarchar(50)->setIndexUnique(),
-            (new EntityField('city_name'))->setTypeVarchar(100),
-            (new EntityField('city_nominative'))->setTypeVarchar(100)->setNullable(),
-            (new EntityField('city_genitive'))->setTypeVarchar(100)->setNullable(),
-            (new EntityField('city_dative'))->setTypeVarchar(100)->setNullable(),
-            (new EntityField('city_accusative'))->setTypeVarchar(100)->setNullable(),
-            (new EntityField('city_instrumental'))->setTypeVarchar(100)->setNullable(),
-            (new EntityField('city_prepositional'))->setTypeVarchar(100)->setNullable(),
-            (new EntityField('enabled'))->setTypeTinyInt(1)->setDefault(1),
-            (new EntityField('position'))->setTypeInt(11)->setDefault(0),
-            (new EntityField('created_at'))->setTypeDatetime()->setNullable(),
-            (new EntityField('updated_at'))->setTypeDatetime()->setNullable(),
-        ]);
-
-        // Create SEO templates table
-        $this->migrateEntityTable(SubdomainSeoEntity::class, [
-            (new EntityField('id'))->setIndexPrimaryKey()->setTypeInt(11, false)->setAutoIncrement(),
-            (new EntityField('subdomain_id'))->setTypeInt(11),
-            (new EntityField('page_type'))->setTypeVarchar(50),
-            (new EntityField('meta_title_pattern'))->setTypeText()->setNullable(),
-            (new EntityField('meta_description_pattern'))->setTypeText()->setNullable(),
-            (new EntityField('meta_keywords_pattern'))->setTypeText()->setNullable(),
-            (new EntityField('h1_pattern'))->setTypeText()->setNullable(),
-            (new EntityField('description_pattern'))->setTypeText()->setNullable(),
-        ]);
+        $this->db->query("CREATE TABLE IF NOT EXISTS `__subdomain_seo` (
+            `id` INT(11) NOT NULL AUTO_INCREMENT,
+            `subdomain_id` INT(11) NOT NULL,
+            `page_type` VARCHAR(50) NOT NULL,
+            `meta_title_pattern` TEXT DEFAULT NULL,
+            `meta_description_pattern` TEXT DEFAULT NULL,
+            `meta_keywords_pattern` TEXT DEFAULT NULL,
+            `h1_pattern` TEXT DEFAULT NULL,
+            `description_pattern` TEXT DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `subdomain_page` (`subdomain_id`, `page_type`),
+            KEY `subdomain_id` (`subdomain_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     }
-
+    
     public function init()
     {
-        // Add permission
+        // Register permission using the correct method
         $this->addPermission(self::PERMISSION);
+        
+        // Set the main backend controller
+        $this->setBackendMainController('MultiregionsAdmin');
         
         // Register backend controllers
         $this->registerBackendController('MultiregionsAdmin');
@@ -59,36 +61,9 @@ class Init extends AbstractInit
         $this->registerBackendController('MultiregionAdmin');
         $this->addBackendControllerPermission('MultiregionAdmin', self::PERMISSION);
         
-        // Add to backend menu
+        // Add menu item to admin panel - using the correct method signature
         $this->extendBackendMenu('left_settings', [
             'left_multiregions_title' => ['MultiregionsAdmin', 'MultiregionAdmin'],
         ]);
-        
-        // Register frontend extenders
-        $this->registerFrontExtender();
-    }
-    
-    /**
-     * Register frontend extenders for all page types
-     */
-    private function registerFrontExtender()
-    {
-        // Hook into MainController
-        $this->extendController('Okay\Controllers\MainController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendMain');
-        
-        // Hook into CategoryController
-        $this->extendController('Okay\Controllers\CategoryController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendCategory');
-        
-        // Hook into ProductController
-        $this->extendController('Okay\Controllers\ProductController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendProduct');
-        
-        // Hook into BrandsController
-        $this->extendController('Okay\Controllers\BrandsController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendBrands');
-        
-        // Hook into BlogController
-        $this->extendController('Okay\Controllers\BlogController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendBlog');
-        
-        // Hook into PageController
-        $this->extendController('Okay\Controllers\PageController', 'Okay\Modules\OkayCMS\Multiregions\Extenders\FrontExtender@extendPage');
     }
 }

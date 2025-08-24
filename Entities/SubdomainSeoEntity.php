@@ -3,6 +3,7 @@
 namespace Okay\Modules\OkayCMS\Multiregions\Entities;
 
 use Okay\Core\Entity\Entity;
+use Okay\Core\QueryFactory;
 
 class SubdomainSeoEntity extends Entity
 {
@@ -20,7 +21,6 @@ class SubdomainSeoEntity extends Entity
     protected static $table = '__subdomain_seo';
     protected static $tableAlias = 'ss';
     
-    // Типы страниц
     const PAGE_TYPE_MAIN = 'main';
     const PAGE_TYPE_CATEGORY = 'category';
     const PAGE_TYPE_PRODUCT = 'product';
@@ -28,9 +28,6 @@ class SubdomainSeoEntity extends Entity
     const PAGE_TYPE_BLOG = 'blog';
     const PAGE_TYPE_PAGE = 'page';
     
-    /**
-     * Получить типы страниц
-     */
     public static function getPageTypes()
     {
         return [
@@ -43,50 +40,65 @@ class SubdomainSeoEntity extends Entity
         ];
     }
     
-    /**
-     * Обновить или создать SEO шаблон
-     */
+    public function getBySubdomain($subdomainId)
+    {
+        if (empty($subdomainId)) {
+            return [];
+        }
+        
+        $patterns = $this->find(['subdomain_id' => (int)$subdomainId]);
+        
+        $result = [];
+        foreach ($patterns as $pattern) {
+            $result[$pattern->page_type] = $pattern;
+        }
+        
+        return $result;
+    }
+    
+    public function getPattern($subdomainId, $pageType)
+    {
+        if (empty($subdomainId) || empty($pageType)) {
+            return null;
+        }
+        
+        return $this->findOne([
+            'subdomain_id' => (int)$subdomainId,
+            'page_type' => $pageType
+        ]);
+    }
+    
     public function updatePattern($subdomainId, $pageType, $data)
     {
         if (empty($subdomainId) || empty($pageType)) {
             return false;
         }
         
-        // Проверяем существует ли запись
-        $existing = $this->findOne([
-            'subdomain_id' => (int)$subdomainId,
-            'page_type' => $pageType
-        ]);
+        $existing = $this->getPattern($subdomainId, $pageType);
         
-        // Подготавливаем данные
-        $patternData = new \stdClass();
-        $patternData->subdomain_id = (int)$subdomainId;
-        $patternData->page_type = $pageType;
-        $patternData->meta_title_pattern = $data['meta_title_pattern'] ?? '';
-        $patternData->meta_description_pattern = $data['meta_description_pattern'] ?? '';
-        $patternData->meta_keywords_pattern = $data['meta_keywords_pattern'] ?? '';
-        $patternData->h1_pattern = $data['h1_pattern'] ?? '';
-        $patternData->description_pattern = $data['description_pattern'] ?? '';
+        $patternData = [
+            'subdomain_id' => (int)$subdomainId,
+            'page_type' => $pageType,
+            'meta_title_pattern' => $data['meta_title_pattern'] ?? '',
+            'meta_description_pattern' => $data['meta_description_pattern'] ?? '',
+            'meta_keywords_pattern' => $data['meta_keywords_pattern'] ?? '',
+            'h1_pattern' => $data['h1_pattern'] ?? '',
+            'description_pattern' => $data['description_pattern'] ?? ''
+        ];
         
         if ($existing) {
-            // Обновляем существующую запись
             return $this->update($existing->id, $patternData);
         } else {
-            // Создаем новую запись
             return $this->add($patternData);
         }
     }
     
-    /**
-     * Удалить все шаблоны для поддомена
-     */
     public function deleteBySubdomain($subdomainId)
     {
         if (empty($subdomainId)) {
             return false;
         }
         
-        // Получаем все записи для поддомена
         $patterns = $this->find(['subdomain_id' => (int)$subdomainId]);
         
         if ($patterns) {
@@ -97,18 +109,12 @@ class SubdomainSeoEntity extends Entity
         return true;
     }
     
-    /**
-     * Фильтр по subdomain_id
-     */
     protected function filter__subdomain_id($subdomainId)
     {
         $this->select->where('ss.subdomain_id = :subdomain_id');
         $this->select->bindValue('subdomain_id', (int)$subdomainId);
     }
     
-    /**
-     * Фильтр по page_type
-     */
     protected function filter__page_type($pageType)
     {
         $this->select->where('ss.page_type = :page_type');
